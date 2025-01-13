@@ -2,6 +2,7 @@ defaults:
   icon: "mdi:lightning-bolt"
   accuracy_decimals: "2"
   target: "Kessel"
+  is_reset_at_midnight: "true"
 
 globals:
   - id: gOFFSET_${property_wh}
@@ -19,7 +20,12 @@ sensor:
     update_interval: never
     filters:
       - multiply: 0.001
-      - lambda: return x - id(gOFFSET_${property_wh});
+      - lambda: |-
+          if constexpr (!${is_reset_at_midnight}) {
+            return x - id(gOFFSET_${property_wh});
+          } else {
+            return x;
+          }
       
   - platform: template
     name: ${sensor_name}
@@ -71,8 +77,11 @@ time:
         hours: 0
         then:
           - lambda: |-
-              // set the current Wh value as offset for the next day and convert Wh to kWh
-              id(gOFFSET_${property_wh}) = id(${property_wh}).raw_state * 0.001;
-          - sensor.template.publish:
-              id: ${sensor_name}
-              state: 0.0
+              if constexpr (!${is_reset_at_midnight}) {
+                // set the current Wh value as offset for the next day and convert Wh to kWh
+                id(gOFFSET_${property_wh}) = id(${property_wh}).raw_state * 0.001;
+                id(${sensor_name}).publish_state(0.0);
+              } else {
+                queueRequest(${target}, Property::k${property_wh});
+                queueRequest(${target}, Property::k${property_kwh});
+              }
